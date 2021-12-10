@@ -1,0 +1,13 @@
+[Unit]
+Description=Chat server
+After=network.target
+StartLimitIntervalSec=0
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+User=chat
+ExecStart=/usr/bin/chatserver
+
+[Install]
+WantedBy=multi-user.target
