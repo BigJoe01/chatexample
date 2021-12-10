@@ -3,7 +3,8 @@
 ----
 
 This example implement simple tcp based message broadcaster server and client. <br>
-The server using simple connection pool instead of create go routine for every new connection, just an example
+The server using simple connection pool instead of create go routine for every new connection,
+Better option for put every connection into new go routine
 
 ## Additional files
 
@@ -25,6 +26,8 @@ Example systemd init script added
 ### Chat backend example workflow
 
 ---
+
+![Infrastructure example](docs/ChatBackend.png)
 
 Docs folder ChatBackend.png
 

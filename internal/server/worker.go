@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -22,8 +24,8 @@ const (
 	serverLogSenderStopped    = "Sender stopped"
 )
 
-// intDispatchConnection handle incoming connections put connections into the pool
-func intDispatchConnection(s *ChatServer) {
+// intAccept handle incoming connections put connections into the pool
+func intAccept(s *ChatServer) {
 	s.wg.Add(1)
 	logger.Printf(serverLogDispatchStarted)
 
@@ -32,7 +34,7 @@ func intDispatchConnection(s *ChatServer) {
 		logger.Printf(serverLogDispatchStopped)
 	}()
 
-	add := func(conn net.Conn) {
+	addConnection := func(conn net.Conn) {
 		s.connections.PoolMu.Lock()
 		defer s.connections.PoolMu.Unlock()
 		s.connections.Pool = append(s.connections.Pool,
@@ -52,7 +54,7 @@ func intDispatchConnection(s *ChatServer) {
 			_ = s.server.SetDeadline(time.Now().Add(500 * time.Millisecond))
 			nc, err := s.server.Accept()
 			if err == nil {
-				add(nc)
+				addConnection(nc)
 			}
 		}
 	}
@@ -72,7 +74,7 @@ func intReceiver(s *ChatServer) {
 	buff := make([]byte, connectionDefaultBufferSize)
 	timeout := false
 
-	remove := func() {
+	removeConnection := func() {
 		s.connections.PoolMu.Lock()
 		defer s.connections.PoolMu.Unlock()
 		var nc []*Connection
@@ -86,7 +88,7 @@ func intReceiver(s *ChatServer) {
 		s.connections.Pool = nc
 	}
 
-	receive := func() {
+	receiveData := func() {
 		s.connections.PoolMu.RLock()
 		defer s.connections.PoolMu.RUnlock()
 		var err error
@@ -117,9 +119,9 @@ func intReceiver(s *ChatServer) {
 		case <-s.ctx.Done():
 			return
 		default:
-			receive()
+			receiveData()
 			if timeout {
-				remove()
+				removeConnection()
 				timeout = false
 			}
 		}
@@ -127,22 +129,22 @@ func intReceiver(s *ChatServer) {
 }
 
 // intMessageTransform is handle incoming messages
-func intMessageTransform(s *ChatServer) {
-	s.wg.Add(1)
+func intMessageTransform(ctx context.Context, wg *sync.WaitGroup, receiver <-chan Message, sender chan<- Message) {
+	wg.Add(1)
 	logger.Printf(serverLogTransformStarted)
 
 	defer func() {
-		s.wg.Done()
+		wg.Done()
 		logger.Printf(serverLogTransformStopped)
 	}()
 
 	for {
 		select {
-		case <-s.ctx.Done():
+		case <-ctx.Done():
 			return
-		case msg := <-s.receiver:
+		case msg := <-receiver:
 			logger.Printf("incoming message from %s [%s]\n", msg.Conn.RemoteAddr().String(), string(msg.Data))
-			s.sender <- msg
+			sender <- msg
 		}
 	}
 }

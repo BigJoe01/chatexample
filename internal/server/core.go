@@ -26,7 +26,7 @@ type (
 		Disconnected bool
 	}
 
-	// Connections represents list of the connected chat users
+	// Connections represents list of the connected chat clients
 	Connections struct {
 		PoolMu sync.RWMutex
 		Pool   []*Connection
@@ -36,11 +36,11 @@ type (
 	ChatServer struct {
 		port        int
 		running     bool
+		wg          sync.WaitGroup
 		connections Connections
 		server      *net.TCPListener
 		ctx         context.Context
 		ctxCancel   func()
-		wg          sync.WaitGroup
 		receiver    chan Message
 		sender      chan Message
 	}
@@ -94,10 +94,10 @@ func (s *ChatServer) Start() error {
 	s.server, _ = srv.(*net.TCPListener)
 	s.ctx, s.ctxCancel = context.WithCancel(context.Background())
 
-	go intDispatchConnection(s)
+	go intMessageTransform(s.ctx, &s.wg, s.receiver, s.sender)
+	go intAccept(s)
 	go intSender(s)
 	go intReceiver(s)
-	go intMessageTransform(s)
 
 	s.running = true
 	logger.Println(serverLogStarted)

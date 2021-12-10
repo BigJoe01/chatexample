@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -16,10 +17,10 @@ type (
 	// ChatClient implements tcp client
 	ChatClient struct {
 		address   string
+		connError atomic.Value
 		conn      *net.TCPConn
-		connError error
-		ctx       context.Context
 		ctxCancel func()
+		ctx       context.Context
 		wg        sync.WaitGroup
 		running   bool
 		interval  time.Duration
@@ -37,14 +38,13 @@ func SetLogger(l *log.Logger) {
 }
 
 // NewClient is make new chat client
-// a contaons the address of the server
 func NewClient(a string, i time.Duration) (*ChatClient, error) {
 	c := &ChatClient{
 		address:   a,
 		running:   false,
 		interval:  i,
-		connError: nil,
 	}
+	c.connError.Store(nil)
 
 	conn, err := net.Dial("tcp", a)
 	if err != nil {
@@ -55,6 +55,7 @@ func NewClient(a string, i time.Duration) (*ChatClient, error) {
 	return c, nil
 }
 
+// clientReadWriter is handle client incoming - outgoing messages
 func clientReadWriter(client *ChatClient) {
 	client.wg.Add(1)
 	defer client.wg.Done()
@@ -71,7 +72,7 @@ func clientReadWriter(client *ChatClient) {
 			case nil:
 			case io.EOF:
 				logger.Printf("Server closed the connection for %s", client.conn.LocalAddr().String())
-				client.connError = err
+				client.connError.Store(err)
 				return
 			default:
 			}
@@ -83,7 +84,7 @@ func clientReadWriter(client *ChatClient) {
 				logger.Printf("Server message %s to %s", serverData, client.conn.LocalAddr().String())
 			case io.EOF:
 				logger.Printf("Server closed the connection for %s", client.conn.LocalAddr().String())
-				client.connError = err
+				client.connError.Store(err)
 				return
 			default:
 			}
@@ -91,6 +92,7 @@ func clientReadWriter(client *ChatClient) {
 	}
 }
 
+// ErrClient is error messages for client errors
 var (
 	ErrClientAlreadyRunning = errors.New("Client already running")
 )
@@ -117,7 +119,7 @@ func (c *ChatClient) IsRunning() bool {
 	return c.running
 }
 
-// LastError returns
+// LastError returns connection last error
 func (c *ChatClient) LastError() error {
-	return c.connError
+	return c.connError.Load().(error)
 }
